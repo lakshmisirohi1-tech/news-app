@@ -50,6 +50,12 @@ def get_news(category="technology"):
 
 print("News API program started!")
 
+
+print("\n===== TECHNOLOGY NEWS =====")
 get_news("technology")
+
+print("\n===== SPORTS NEWS =====")
 get_news("sports")
+
+print("\n===== BUSINESS NEWS =====")
 get_news("business")
