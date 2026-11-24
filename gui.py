@@ -5,7 +5,7 @@ import requests
 
 from io import BytesIO
 from PIL import Image, ImageTk
-from news_api import get_news
+from news_api import get_news, search_news
 
 # ---------------- COLORS ----------------
 BG = "#F4F2ED"
@@ -83,6 +83,40 @@ status = tk.Label(
     font=("Arial", 10, "bold")
 )
 status.pack(anchor="w", padx=35, pady=5)
+
+# ---------------- SEARCH BAR ----------------
+search_frame = tk.Frame(root, bg=BG)
+search_frame.pack(fill="x", padx=35, pady=10)
+
+search_entry = tk.Entry(
+    search_frame,
+    font=("Arial", 13),
+    width=45,
+    bd=1,
+    relief="solid"
+)
+search_entry.pack(side="left", ipady=8, padx=(0, 10))
+
+search_entry.bind(
+    "<Return>",
+    lambda event: perform_search()
+)
+
+search_entry.insert(0, "Search news...")
+
+search_button = tk.Button(
+    search_frame,
+    text="SEARCH",
+    bg=RED,
+    fg=WHITE,
+    font=("Arial", 10, "bold"),
+    relief="flat",
+    padx=20,
+    pady=9,
+    cursor="hand2",
+    command=lambda: perform_search()
+)
+search_button.pack(side="left")
 
 # ---------------- SCROLLABLE CONTENT ----------------
 container = tk.Frame(root, bg=BG)
@@ -329,6 +363,63 @@ def create_news_card(article, parent):
         command=lambda: open_article(url)
     ).pack(anchor="w", pady=8)
 
+# ---------------- PERFORM SEARCH ----------------
+def perform_search():
+
+    keyword = search_entry.get().strip()
+
+    if not keyword or keyword == "Search news...":
+        status.config(text="Please enter a news topic to search.")
+        return
+
+    global image_references
+    image_references = []
+
+    for widget in content.winfo_children():
+        widget.destroy()
+
+    status.config(text=f"Searching news about '{keyword}'...")
+    root.update_idletasks()
+
+    articles = search_news(keyword)
+    print("Search completed:", len(articles), "articles found")
+
+    if not articles:
+        status.config(text="No articles found. Try another keyword.")
+        return
+
+    status.config(
+        text=f"{len(articles)} search results for '{keyword}'"
+    )
+
+    create_featured(articles[0])
+
+    tk.Label(
+        content,
+        text="SEARCH RESULTS",
+        bg=BG,
+        fg=BLACK,
+        font=("Arial", 16, "bold")
+    ).pack(anchor="w", pady=10)
+
+    grid = tk.Frame(content, bg=BG)
+    grid.pack(fill="both", expand=True)
+
+    for index, article in enumerate(articles[1:]):
+
+        row = index // 2
+        column = index % 2
+
+        grid.grid_columnconfigure(column, weight=1)
+
+        card_holder = tk.Frame(grid, bg=BG)
+        card_holder.grid(
+            row=row,
+            column=column,
+            sticky="nsew"
+        )
+
+        create_news_card(article, card_holder)
 
 # ---------------- DISPLAY NEWS ----------------
 def show_news(category):
