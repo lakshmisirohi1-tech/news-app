@@ -2,6 +2,7 @@
 import tkinter as tk
 import webbrowser
 import requests
+import threading
 
 from io import BytesIO
 from PIL import Image, ImageTk
@@ -164,33 +165,60 @@ scrollbar.pack(side="right", fill="y")
 
 
 # ---------------- LOAD IMAGE ----------------
-def load_image(url, width, height):
+
+def load_image_async(url, label, width, height):
 
     if not url:
-        return None
+        return
 
-    try:
-        response = requests.get(
-            url,
-            timeout=8,
-            headers={"User-Agent": "Mozilla/5.0"}
-        )
+    def fetch_image():
+        try:
+            response = requests.get(
+                url,
+                timeout=8,
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
 
-        response.raise_for_status()
+            response.raise_for_status()
 
-        img = Image.open(
-            BytesIO(response.content)
-        ).convert("RGB")
+            img = Image.open(
+                BytesIO(response.content)
+            ).convert("RGB")
 
-        img = img.resize(
-            (width, height),
-            Image.Resampling.LANCZOS
-        )
+            img = img.resize(
+                (width, height),
+                Image.Resampling.LANCZOS
+            )
 
-        return ImageTk.PhotoImage(img)
+            root.after(
+                0,
+                lambda: display_image(img, label)
+            )
 
-    except Exception:
-        return None
+        except Exception as e:
+            print("Image loading failed:", e)
+
+    threading.Thread(
+        target=fetch_image,
+        daemon=True
+    ).start()
+
+
+def display_image(img, label):
+
+    if not label.winfo_exists():
+        return
+
+    photo = ImageTk.PhotoImage(img)
+
+    label.configure(
+        image=photo,
+        text="",
+        height=0
+    )
+
+    label.image = photo
+    image_references.append(photo)
 
 
 # ---------------- OPEN ARTICLE ----------------
@@ -228,22 +256,18 @@ def create_featured(article):
         font=("Arial", 10, "bold")
     ).pack(anchor="w", pady=(0, 12))
 
-    photo = load_image(image_url, 1000, 300)
+    image_label = tk.Label(
+        card,
+        text="FEATURED NEWS",
+        bg="#E8E5DE",
+        fg=GREY,
+        height=8,
+        font=("Georgia", 20, "bold")
+    )
 
-    if photo:
-        image_label = tk.Label(card, image=photo, bg=WHITE)
-        image_label.image = photo
-        image_references.append(photo)
-        image_label.pack(fill="x", pady=(0, 15))
-    else:
-        tk.Label(
-            card,
-            text="FEATURED NEWS",
-            bg="#E8E5DE",
-            fg=GREY,
-            height=8,
-            font=("Georgia", 20, "bold")
-        ).pack(fill="x", pady=(0, 15))
+    image_label.pack(fill="x", pady=(0, 15))
+
+    load_image_async(image_url, image_label, 1000, 300)
 
     tk.Label(
         card,
@@ -307,23 +331,19 @@ def create_news_card(article, parent):
 
     card.pack(fill="both", expand=True, padx=7, pady=7)
 
-    photo = load_image(image_url, 450, 190)
+    image_label = tk.Label(
+        card,
+        text="NEWS",
+        bg="#E8E5DE",
+        fg=GREY,
+        height=5,
+        font=("Arial", 16, "bold")
+    )
 
-    if photo:
-        image_label = tk.Label(card, image=photo, bg=WHITE)
-        image_label.image = photo
-        image_references.append(photo)
-        image_label.pack(fill="x", pady=(0, 10))
-    else:
-        tk.Label(
-            card,
-            text="NEWS",
-            bg="#E8E5DE",
-            fg=GREY,
-            height=5,
-            font=("Georgia", 16, "bold")
-        ).pack(fill="x", pady=(0, 10))
+    image_label.pack(fill="x", pady=(0, 10))
 
+    load_image_async(image_url, image_label, 450, 190)
+ 
     tk.Label(
         card,
         text=source.upper(),
@@ -372,72 +392,116 @@ def perform_search():
         status.config(text="Please enter a news topic to search.")
         return
 
+    status.config(text=f"Searching news about '{keyword}'...")
+
+    def fetch_data():
+        try:
+            articles = search_news(keyword)
+
+            root.after(
+                0,
+                lambda: display_search_results(articles, keyword)
+            )
+
+        except Exception as e:
+            root.after(
+                0,
+                
+                lambda error=str(e): status.config(text=f"Search error: {error}")
+            )
+
+    threading.Thread(
+        target=fetch_data,
+        daemon=True
+    ).start()
+
+
+def display_search_results(articles, keyword):
+
     global image_references
     image_references = []
 
     for widget in content.winfo_children():
         widget.destroy()
-
-    status.config(text=f"Searching news about '{keyword}'...")
-    root.update_idletasks()
-
-    articles = search_news(keyword)
-    print("Search completed:", len(articles), "articles found")
 
     if not articles:
         status.config(text="No articles found. Try another keyword.")
         return
 
-    status.config(
-        text=f"{len(articles)} search results for '{keyword}'"
-    )
+    status.config(text=f"{len(articles)} search results for '{keyword}'")
 
     create_featured(articles[0])
 
-    tk.Label(
+    results_label = tk.Label(
         content,
         text="SEARCH RESULTS",
-        bg=BG,
-        fg=BLACK,
-        font=("Arial", 16, "bold")
-    ).pack(anchor="w", pady=10)
+        font=("Georgia", 20, "bold"),
+        bg="#F5F1E8",
+        fg="#1A1A1A"
+    )
+    results_label.pack(anchor="w", padx=30, pady=20)
 
-    grid = tk.Frame(content, bg=BG)
-    grid.pack(fill="both", expand=True)
+    grid_frame = tk.Frame(content, bg="#F5F1E8")
+    grid_frame.pack(fill="x", padx=20)
 
-    for index, article in enumerate(articles[1:]):
+    for i, article in enumerate(articles[1:]):
+        row = i // 2
+        col = i % 2
 
-        row = index // 2
-        column = index % 2
+        grid_frame.grid_columnconfigure(col, weight=1)
 
-        grid.grid_columnconfigure(column, weight=1)
-
-        card_holder = tk.Frame(grid, bg=BG)
+        card_holder = tk.Frame(grid_frame, bg="#F5F1E8")
         card_holder.grid(
             row=row,
-            column=column,
+            column=col,
             sticky="nsew"
         )
 
         create_news_card(article, card_holder)
-
 # ---------------- DISPLAY NEWS ----------------
+# ---------------- SHOW NEWS ----------------
+
+
+    
 def show_news(category):
 
     global image_references
-
     image_references = []
 
     for widget in content.winfo_children():
         widget.destroy()
 
-    status.config(
-        text=f"Loading {category.title()} news..."
-    )
+    status.config(text=f"Loading {category.title()} news...")
 
-    root.update_idletasks()
+    def fetch_data():
+        try:
+            articles = get_news(category)
 
-    articles = get_news(category)
+            root.after(
+                0,
+                lambda: display_news(articles, category)
+            )
+
+        except Exception as e:
+            root.after(
+                0,
+                lambda error=str(e): status.config(
+                    text=f"Unable to load news: {error}"
+                )
+            )
+
+    threading.Thread(
+        target=fetch_data,
+        daemon=True
+    ).start()
+
+
+
+# ---------------- DISPLAY NEWS ----------------
+def display_news(articles, category):
+
+    global image_references
+    image_references = []
 
     if not articles:
         status.config(text="No news found. Please try again.")
@@ -447,10 +511,8 @@ def show_news(category):
         text=f"{len(articles)} articles available | {category.title()}"
     )
 
-    # First article is featured
     create_featured(articles[0])
 
-    # Remaining articles
     tk.Label(
         content,
         text="LATEST STORIES",
@@ -477,8 +539,7 @@ def show_news(category):
         )
 
         create_news_card(article, card_holder)
-
-
+   
 # ---------------- CATEGORY BUTTONS ----------------
 categories = [
     ("HOME", "technology"),
